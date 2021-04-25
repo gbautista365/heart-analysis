@@ -45,19 +45,94 @@ Describe the methods used in this section.
 
 Specifically describe the data and how it is used here.
 
+Ideal variables
+
+- `age`: age in years 
+- `sex`: sex (1 = male; 0 = female)
+- `cp`: chest pain type 
+-- Value 1: typical angina 
+-- Value 2: atypical angina 
+-- Value 3: non-anginal pain 
+-- Value 4: asymptomatic 
+- `trestbps`: resting blood pressure (in mm Hg on admission to the hospital) 
+- `chol`: serum cholesterol in mg/dl 
+- `fbs`: (fasting blood sugar > 120 mg/dl) (1 = true; 0 = false) 
+
+Use if wanted
+
+- `restecg`: resting electrocardiographic results 
+-- Value 0: normal 
+-- Value 1: having ST-T wave abnormality (T wave inversions and/or ST elevation or depression of > 0.05 mV) 
+-- Value 2: showing probable or definite left ventricular hypertrophy by Estes' criteria 
+
+Use if needed
+
+- `thalach`: maximum heart rate achieved 
+- `exang`: exercise induced angina (1 = yes; 0 = no) 
+- `oldpeak`: ST depression induced by exercise relative to rest 
+- `slope`: the slope of the peak exercise ST segment 
+-- Value 1: upsloping 
+-- Value 2: flat 
+-- Value 3: downsloping 
+
+Avoid this predictor. Invasive
+- `ca`: number of major vessels (0-3) colored by flourosopy 
+
+Not sure
+- `thal`: 3 = normal; 6 = fixed defect; 7 = reversable defect
+
+Binary response variable
+- `num`: diagnosis of heart disease (angiographic disease status) 
+-- Value 0: < 50% diameter narrowing 
+-- Value 1: > 50% diameter narrowing 
+(in any major vessel: attributes 59 through 68 are vessels)
+
 ### Modeling
 
 Discuss your modeling and validation strategy here.
 
 
 
-FOR SIMPLICITY, WE WILL USE THE CLEAN DATA. Check `check-data` for informaiton on how hd_clean was obtained.
-```{r}
-trn_idx = sample(nrow(hd_clean), size = nrow(hd_clean) * 0.80, replace = FALSE)
-hd_trn = hd_clean[trn_idx, ]
-hd_tst = hd_clean[-trn_idx, ]
+FOR SIMPLICITY, WE WILL USE THE CLEAN DATA. Check `check-data` for information on how hd_clean was obtained.
 
-summary(hd_trn)
+```{r}
+# Set seed
+set.seed(432)
+# Number of observations in the original data set
+n = nrow(hd)
+# Percentage of original data set that will be sampled for the train data set
+train_percentage = 0.80
+# Split the data
+trn_idx = sample(n, size = n * train_percentage, replace = FALSE)
+na_hd_trn = hd[trn_idx, ]
+hd_tst = hd[-trn_idx, ]
+# Remove predictors slope, ca, thal 
+# which we deemed intrusive to gather or have a high proportion of NA values
+hd_trn = na_hd_trn[, -c(11, 12, 13)]
+# Remove any observations with NA values in their row
+hd_trn = na.omit(hd_trn)
+# Change character predictors to be factors
+hd_trn$sex = factor(hd_trn$sex, levels = c("0", "1"), labels = c("F", "M"))
+hd_trn$cp = factor(hd_trn$cp)
+hd_trn$fbs = factor(hd_trn$fbs, levels = c("0", "1"), labels = c("false", "true"))
+hd_trn$restecg = factor(hd_trn$restecg)
+hd_trn$exang = factor(hd_trn$exang, levels = c("0", "1"), labels = c("no", "yes"))
+hd_trn$location = factor(hd_trn$location)
+hd_trn$num = factor(hd_trn$num)
+# create binary predictor with no for num value v0 and yes otherwise
+hd_trn$heart = factor(ifelse(hd_trn$num == "v0", "no", "yes"), levels = c("no", "yes"))
+
+str(hd_trn)
+```
+
+
+WARNING: Lots of cholestorol data has 0 value. Look for them.!
+```{r}
+skimr::skim(hd_trn)
+plot(trestbps ~ age, data = hd_trn, pch = 20,
+     col = hd_trn$heart)
+grid()
+legend("bottomright", c("No", "Yes"), title = "Heart Disease", col = hd_trn$heart, pch = 20)
 ```
 
 
