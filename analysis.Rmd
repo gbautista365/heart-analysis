@@ -1,7 +1,7 @@
 ---
-title: "Title of Analysis Goes Here"
-author: "Your Name (netid@illinois.edu)"
-date: "Insert Date Here"
+title: "Heart Disease Analysis"
+author: "German Batuista (gbauti5@illinois.edu)"
+date: "04/24/2021"
 output:
   html_document: 
     theme: default
@@ -27,6 +27,8 @@ hd = readr::read_csv("data/hd.csv")
 
 > Abstract text goes here.
 
+DO THIS LAST AFTER THE ANALYSIS.
+SHORT AND SWEET.
 ***
 
 ## Introduction
@@ -46,6 +48,18 @@ Specifically describe the data and how it is used here.
 ### Modeling
 
 Discuss your modeling and validation strategy here.
+
+
+
+FOR SIMPLICITY, WE WILL USE THE CLEAN DATA. Check `check-data` for informaiton on how hd_clean was obtained.
+```{r}
+trn_idx = sample(nrow(hd_clean), size = nrow(hd_clean) * 0.80, replace = FALSE)
+hd_trn = hd_clean[trn_idx, ]
+hd_tst = hd_clean[-trn_idx, ]
+
+summary(hd_trn)
+```
+
 
 ***
 
