@@ -1,7 +1,7 @@
 ---
 title: "Heart Disease Analysis"
 author: "German Batuista (gbauti5@illinois.edu)"
-date: "04/24/2021"
+date: "05/02/2021"
 output:
   html_document: 
     theme: default
@@ -105,12 +105,19 @@ train_percentage = 0.80
 # Split the data
 trn_idx = sample(n, size = n * train_percentage, replace = FALSE)
 na_hd_trn = hd[trn_idx, ]
-hd_tst = hd[-trn_idx, ]
+na_hd_tst = hd[-trn_idx, ]
+
 # Remove predictors slope, ca, thal 
 # which we deemed intrusive to gather or have a high proportion of NA values
-hd_trn = na_hd_trn[, -c(11, 12, 13)]
+na_hd_trn = na_hd_trn[, -c(11, 12, 13)]
+na_hd_tst = na_hd_tst[, -c(11, 12, 13)]
+# WARNING: Lots of cholestorol data has 0 value. Look for them.!
+na_hd_trn[which(na_hd_trn$chol == 0), ]$chol = NA
+na_hd_tst[which(na_hd_tst$chol == 0), ]$chol = NA
 # Remove any observations with NA values in their row
-hd_trn = na.omit(hd_trn)
+hd_trn = na.omit(na_hd_trn)
+hd_tst = na.omit(na_hd_tst)
+
 # Change character predictors to be factors
 hd_trn$sex = factor(hd_trn$sex, levels = c("0", "1"), labels = c("F", "M"))
 hd_trn$cp = factor(hd_trn$cp)
@@ -119,23 +126,110 @@ hd_trn$restecg = factor(hd_trn$restecg)
 hd_trn$exang = factor(hd_trn$exang, levels = c("0", "1"), labels = c("no", "yes"))
 hd_trn$location = factor(hd_trn$location)
 hd_trn$num = factor(hd_trn$num)
-# create binary predictor with no for num value v0 and yes otherwise
+# Create binary predictor with no: num v0 and yes: otherwise
 hd_trn$heart = factor(ifelse(hd_trn$num == "v0", "no", "yes"), levels = c("no", "yes"))
 
+# Repeat for testing data
+hd_tst$sex = factor(hd_tst$sex, levels = c("0", "1"), labels = c("F", "M"))
+hd_tst$cp = factor(hd_tst$cp)
+hd_tst$fbs = factor(hd_tst$fbs, levels = c("0", "1"), labels = c("false", "true"))
+hd_tst$restecg = factor(hd_tst$restecg)
+hd_tst$exang = factor(hd_tst$exang, levels = c("0", "1"), labels = c("no", "yes"))
+hd_tst$location = factor(hd_tst$location)
+hd_tst$num = factor(hd_tst$num)
+
+# Create binary predictor with no: num v0 and yes: otherwise
+hd_tst$heart = factor(ifelse(hd_tst$num == "v0", "no", "yes"), levels = c("no", "yes"))
+
+
 str(hd_trn)
+str(hd_tst)
 ```
 
 
-WARNING: Lots of cholestorol data has 0 value. Look for them.!
+
 ```{r}
 skimr::skim(hd_trn)
+```
+
+```{r}
 plot(trestbps ~ age, data = hd_trn, pch = 20,
      col = hd_trn$heart)
 grid()
-legend("bottomright", c("No", "Yes"), title = "Heart Disease", col = hd_trn$heart, pch = 20)
+legend("topleft", c("No", "Yes"), title = "Heart Disease", col = hd_trn$heart, pch = 20)
+```
+
+```{r}
+plot(oldpeak ~ age, data = hd_trn, pch = 20,
+     col = hd_trn$heart)
+grid()
+legend("topleft", c("No", "Yes"), title = "Heart Disease", col = hd_trn$heart, pch = 20)
+```
+
+FIT A MODEL AND DO CROSS VALIDATION
+```{r}
+library(caret)
+set.seed(432)
+cv_folds = trainControl(method = "cv", number = 5)
+forest_train = train(heart ~ age + sex + cp + trestbps + chol + fbs + restecg, 
+      data = hd_trn,
+      method = "rf",
+      trControl = cv_folds,
+      tuneLength = 9)
+```
+
+```{r}
+library(cvms)
+forest_pred = predict(forest_train, hd_tst, type = "prob")[, "yes"]
+forest_results = tibble::tibble(predicted = forest_pred, actual = hd_tst$heart)
+# Cutoffs considered
+cutoffs = seq(0, 1, by = 0.05)
+make_forest_eval = function(cutoff) {
+  evaluate(data = forest_results,
+         target_col = "actual",
+         prediction_cols = "predicted",
+         type = "binomial",
+         cutoff = cutoff,
+         positive = "yes")
+}
+forest_list = sapply(cutoffs, make_forest_eval)
+
+plot(cutoffs, forest_list["Accuracy", ], col = "mediumseagreen", pch = 20, type = "b")
+
+plot(cutoffs, forest_list["Sensitivity", ], col = "darkorange", pch = 20, type = "b")
+points(cutoffs, forest_list["Specificity", ], col = "midnightblue", pch = 20, type = "b")
 ```
 
 
+```{r}
+logit_train = train(heart ~ age + sex + cp + trestbps + chol + fbs + restecg, 
+      data = hd_trn,
+      method = "glm",
+      trControl = cv_folds,
+      )
+
+logit_pred = predict(logit_train, hd_tst, type = "prob")[, "yes"]
+logit_results = tibble::tibble(predicted = logit_pred, actual = hd_tst$heart)
+
+make_logit_eval = function(cutoff) {
+  evaluate(data = logit_results,
+         target_col = "actual",
+         prediction_cols = "predicted",
+         type = "binomial",
+         cutoff = cutoff,
+         positive = "yes")
+}
+logit_list = sapply(cutoffs, make_logit_eval)
+
+plot(cutoffs, logit_list["Accuracy", ], col = "darkseagreen", pch = 20, type = "b")
+
+plot(cutoffs, logit_list["Sensitivity", ], col = "orange", pch = 20, type = "b")
+points(cutoffs, logit_list["Specificity", ], col = "blue", pch = 20, type = "b")
+```
+
+
+USE `train` to train models, cross validate, check prediction metrics, and fit final models!!!
+This is used in real life.
 ***
 
 ## Results
