@@ -1,0 +1,396 @@
+---
+title: "Heart Disease Analysis"
+author: "German Batuista (gbauti5@illinois.edu)"
+date: "05/03/2021"
+output:
+  html_document: 
+    theme: default
+    toc: yes
+---
+
+```{r, setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.align = 'center')
+```
+
+```{r, load-packages, include = FALSE}
+# load packages
+library(caret)
+library(cvms)
+```
+
+```{r read-full-data, warning = FALSE, message = FALSE}
+# read full data
+hd = readr::read_csv("data/hd.csv")
+```
+
+***
+
+## Abstract
+
+DO THIS LAST AFTER THE ANALYSIS.
+SHORT AND SWEET.
+***
+
+## Introduction
+
+Write your introduction here.
+
+
+
+
+
+
+```{r}
+set.seed(432)
+# Percentage of original data set sampled for the train data set
+train_percentage = 0.80
+# Split the data
+trn_idx = createDataPartition(hd$num, p = train_percentage)
+na_hd_trn = hd[trn_idx$Resample1, ]
+na_hd_tst = hd[-trn_idx$Resample1, ]
+
+# Remove predictors slope, ca, thal
+# Deemed intrusive to gather or have a high proportion of NA values
+na_hd_trn = na_hd_trn[, -c(11, 12, 13)]
+na_hd_tst = na_hd_tst[, -c(11, 12, 13)]
+
+# WARNING: Lots of cholesterol data has value 0
+na_hd_trn[which(na_hd_trn$chol == 0), ]$chol = NA
+na_hd_tst[which(na_hd_tst$chol == 0), ]$chol = NA
+
+# Remove any observations with NA values in their row
+hd_trn = na.omit(na_hd_trn)
+hd_tst = na.omit(na_hd_tst)
+```
+
+```{r}
+# Change character predictors to be factors
+hd_trn$sex = factor(hd_trn$sex, levels = c("0", "1"), labels = c("F", "M"))
+hd_trn$cp = factor(hd_trn$cp)
+hd_trn$fbs = factor(hd_trn$fbs, levels = c("0", "1"), labels = c("false", "true"))
+hd_trn$restecg = factor(hd_trn$restecg)
+hd_trn$exang = factor(hd_trn$exang, levels = c("0", "1"), labels = c("no", "yes"))
+hd_trn$location = factor(hd_trn$location)
+hd_trn$num = factor(hd_trn$num)
+
+# Create binary predictor with no: if num = v0 and yes: otherwise
+hd_trn$heart = factor(ifelse(hd_trn$num == "v0", "no", "yes"), levels = c("no", "yes"))
+```
+
+```{r}
+# Repeat above for testing data
+hd_tst$sex = factor(hd_tst$sex, levels = c("0", "1"), labels = c("F", "M"))
+hd_tst$cp = factor(hd_tst$cp)
+hd_tst$fbs = factor(hd_tst$fbs, levels = c("0", "1"), labels = c("false", "true"))
+hd_tst$restecg = factor(hd_tst$restecg)
+hd_tst$exang = factor(hd_tst$exang, levels = c("0", "1"), labels = c("no", "yes"))
+hd_tst$location = factor(hd_tst$location)
+hd_tst$num = factor(hd_tst$num)
+
+# Create binary predictor with no: if num = v0 and yes: otherwise
+hd_tst$heart = factor(ifelse(hd_tst$num == "v0", "no", "yes"), levels = c("no", "yes"))
+```
+
+```{r}
+# Summary of training data
+skimr::skim(hd_trn)
+```
+
+```{r}
+plot(as.numeric(cp) ~ age, data = hd_trn, pch = 20,
+     col = hd_trn$heart)
+grid()
+legend("bottomleft", c("No", "Yes"), title = "Heart Disease", col = hd_trn$heart, pch = 20, 
+       inset = c(0, -0.33), xpd = TRUE, horiz = TRUE)
+```
+
+
+```{r}
+plot(oldpeak ~ age, data = hd_trn, pch = 20,
+     col = hd_trn$heart)
+grid()
+legend("bottomleft", c("No", "Yes"), title = "Heart Disease", col = hd_trn$heart, pch = 20,
+       inset = c(0, -0.33), xpd = TRUE, horiz = TRUE)
+```
+
+## Methods
+### Data
+
+The training data set `hd_trn` contains 16 variables which were categorized as:
+
+- *primary*: ideal variables in our model.
+- *secondary*: variables considered if primary variables did not suffice our model requirements (accuracy, sensitivity, specificity).
+- *unconsidered*: variables not considered in our analysis.
+- *response*: variables describing presence or condition of heart disease.
+
+Primary variables
+
+- `age`: age in years 
+- `sex`: sex (1 = male; 0 = female)
+- `cp`: chest pain type 
+    - Value 1: typical angina 
+    - Value 2: atypical angina 
+    - Value 3: non-anginal pain 
+    - Value 4: asymptomatic 
+- `trestbps`: resting blood pressure (in mm Hg on admission to the hospital) 
+- `chol`: serum cholesterol in mg/dl 
+- `fbs`: (fasting blood sugar > 120 mg/dl) (1 = true; 0 = false) 
+- `restecg`: resting electrocardiographic results 
+    - Value 0: normal 
+    - Value 1: having ST-T wave abnormality (T wave inversions and/or ST elevation or depression of > 0.05 mV) 
+    - Value 2: showing probable or definite left ventricular hypertrophy by Estes' criteria 
+
+Secondary variables
+
+- `thalach`: maximum heart rate achieved 
+- `exang`: exercise induced angina (1 = yes; 0 = no) 
+- `oldpeak`: ST depression induced by exercise relative to rest 
+- `slope`: the slope of the peak exercise ST segment 
+    - 1: upsloping 
+    - 2: flat 
+    - 3: downsloping 
+- `thal`: 3 = normal; 6 = fixed defect; 7 = reversable defect
+
+Unconsidered variables
+
+- `ca`: number of major vessels (0-3) colored by flourosopy 
+- `location`: location observation was taken (`ch`, `cl`, `hu`, `va`)
+
+Response variables
+
+- `num`: angiographic disease status i.e. the number of major heart vessels with greater than 50% diameter narrowing.
+    - `v0`: 0 major vessels with greater than 50% diameter narrowing.
+    - `v1`: 1 major vessels with greater than 50% diameter narrowing.
+    - `v2`: 2 major vessels with greater than 50% diameter narrowing. 
+    - `v3`: 3 major vessels with greater than 50% diameter narrowing.
+    - `v4`: 4 major vessels with greater than 50% diameter narrowing.
+
+- `heart`: binary variable describing presence of heart disease derived from `num`
+    - `no` if `num` has value `v0` (negative class)
+    - `yes` otherwise (positive class)
+    
+This analysis was primarily interested in detecting heart disease, therefore `heart` was used as the response variable while primary and secondary variables were potential predictors.
+
+*Note*: The variables `slope`, `thal`, and `ca` were removed while the new variable `heart` was added in `hd_trn` and `hd_tst`.
+
+### Source
+
+The data stored in `data/hd.csv` was accessed through the UCI Machine Learning Repository.
+
+- [Documentation: UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/Heart+Disease)
+
+The data used in the creation of `data/hd.csv` was collected from the four following locations:
+
+1. Cleveland Clinic Foundation
+2. Hungarian Institute of Cardiology, Budapest
+3. V.A. Medical Center, Long Beach, CA
+4. University Hospital, Zurich, Switzerland
+
+The contributors of the data have requested that any publications resulting from the use of the data include the  names of the principal investigator responsible for the data collection at each institution.  They are:
+
+1. Hungarian Institute of Cardiology. Budapest: Andras Janosi, M.D.
+2. University Hospital, Zurich, Switzerland: William Steinbrunn, M.D.
+3. University Hospital, Basel, Switzerland: Matthias Pfisterer, M.D.
+4. V.A. Medical Center, Long Beach and Cleveland Clinic Foundation: Robert Detrano, M.D., Ph.D. 
+
+### Models
+
+We considered a random forest model and a logistic regression model to detect `heart disease`.
+First, we used five fold cross validation on both models which were fit using all primary variables. Their predictive performance were measured using accuracy, sensitivity (true positive rate), and specificity (true negative rate). To optimize predictive performance, cutoff values from 0 to 1 (inclusive) going up by 0.05 were considered. The cutoff values that produced high sensitivity and accuracy and moderately high specificity were chosen to represent the optimal random forest model and logistic regression model respectively.
+
+We repeated the exact same process as above, but we also added all secondary variables to see if predictive performance improved and if this was significant enough to add secondary variables to our previous models.
+
+```{r}
+# 5 fold cross validation 
+set.seed(432)
+cv_folds = trainControl(method = "cv", number = 5)
+
+# Possible cutoff values for classification
+cutoffs = seq(0, 1, by = 0.05)
+```
+
+```{r}
+# Fit random forest model with primary variables
+forest_train = train(heart ~ age + sex + cp + trestbps + chol + fbs + restecg, 
+      data = hd_trn,
+      method = "rf",
+      trControl = cv_folds,
+      tuneLength = 9)
+
+# Make predictions on testing data
+forest_pred = predict(forest_train, hd_tst, type = "prob")[, "yes"]
+forest_results = tibble::tibble(predicted = forest_pred, actual = hd_tst$heart)
+
+# Function that outputs metrics based on cutoff value for random forest model
+make_forest_eval = function(cutoff) {
+  evaluate(data = forest_results,
+         target_col = "actual",
+         prediction_cols = "predicted",
+         type = "binomial",
+         cutoff = cutoff,
+         positive = "yes")
+}
+# List of metrics for each cutoff value
+forest_list = sapply(cutoffs, make_forest_eval)
+```
+
+
+
+
+
+```{r}
+# Fit logistic regression model with primary variables
+logit_train = train(heart ~ age + sex + cp + trestbps + chol + fbs + restecg, 
+      data = hd_trn,
+      method = "glm",
+      trControl = cv_folds)
+
+# Make predictions on testing data
+logit_pred = predict(logit_train, hd_tst, type = "prob")[, "yes"]
+logit_results = tibble::tibble(predicted = logit_pred, actual = hd_tst$heart)
+
+# Function that outputs metrics based on cutoff value for logit model
+make_logit_eval = function(cutoff) {
+  evaluate(data = logit_results,
+         target_col = "actual",
+         prediction_cols = "predicted",
+         type = "binomial",
+         cutoff = cutoff,
+         positive = "yes")
+}
+# List of metrics for each cutoff value
+logit_list = sapply(cutoffs, make_logit_eval)
+```
+
+
+
+
+
+```{r}
+# Fit random forest model including secondary variables
+full_forest_train = train(heart ~ age + sex + cp + trestbps + chol + fbs + restecg + thalach + exang + oldpeak, 
+      data = hd_trn,
+      method = "rf",
+      trControl = cv_folds,
+      tuneLength = 9)
+
+# Make predictions on testing data
+full_forest_pred = predict(full_forest_train, hd_tst, type = "prob")[, "yes"]
+full_forest_results = tibble::tibble(predicted = full_forest_pred, actual = hd_tst$heart)
+
+# Function that outputs metrics based on cutoff value for random forest model
+make_full_forest_eval = function(cutoff) {
+  evaluate(data = full_forest_results,
+         target_col = "actual",
+         prediction_cols = "predicted",
+         type = "binomial",
+         cutoff = cutoff,
+         positive = "yes")
+}
+# List of metrics for each cutoff value
+full_forest_list = sapply(cutoffs, make_full_forest_eval)
+```
+
+
+
+
+```{r}
+# Fit logistic regression model including secondary variables
+full_logit_train = train(heart ~ age + sex + cp + trestbps + chol + fbs + restecg + thalach + exang + oldpeak, 
+      data = hd_trn,
+      method = "glm",
+      trControl = cv_folds)
+
+# Make predictions on testing data
+full_logit_pred = predict(full_logit_train, hd_tst, type = "prob")[, "yes"]
+full_logit_results = tibble::tibble(predicted = full_logit_pred, actual = hd_tst$heart)
+
+# Function that outputs metrics based on cutoff value for logit model
+make_full_logit_eval = function(cutoff) {
+  evaluate(data = full_logit_results,
+         target_col = "actual",
+         prediction_cols = "predicted",
+         type = "binomial",
+         cutoff = cutoff,
+         positive = "yes")
+}
+# List of metrics for each cutoff value
+full_logit_list = sapply(cutoffs, make_logit_eval)
+```
+
+## Results
+
+State your results here.
+
+```{r}
+# Accuracy plot for random forest model with primary variables
+plot(cutoffs, forest_list["Accuracy", ], col = "mediumseagreen", pch = 20, type = "b", lwd = 2,
+     ylab = "Accuracy", main = "Accuracy for Random Forest Model")
+```
+
+```{r}
+# Sensitivity and specificity plot for random forest model with primary variables
+plot(cutoffs, forest_list["Sensitivity", ], col = "darkorange", pch = 20, type = "b",
+     ylab = "Performance", main = "Sensitvity and Specificity for Random Forest Model")
+points(cutoffs, forest_list["Specificity", ], col = "midnightblue", pch = 20, type = "b")
+legend("bottomleft", c("Sensitivity", "Specificity"), col = c("darkorange", "midnightblue"), pch = 20)
+```
+
+```{r}
+# Accuracy plot for logit model with primary variables
+plot(cutoffs, logit_list["Accuracy", ], col = "chartreuse", pch = 20, type = "b", lwd = 2,
+     ylab = "Accuracy", main = "Accuracy for Logit Model")
+```
+
+```{r}
+# Sensitivity and specificity plot for logit model with primary variables
+plot(cutoffs, logit_list["Sensitivity", ], col = "purple", pch = 20, type = "b",
+     ylab = "Performance", main = "Sensitvity and Specificity for Logit Model")
+points(cutoffs, logit_list["Specificity", ], col = "firebrick", pch = 20, type = "b")
+legend("bottomleft", c("Sensitivity", "Specificity"), col = c("purple", "firebrick"), pch = 20)
+```
+
+```{r}
+# Accuracy plot for random forest model including secondary variables
+plot(cutoffs, full_forest_list["Accuracy", ], col = "mediumseagreen", pch = 20, type = "b", lty = 2, lwd = 2,
+     ylab = "Accuracy", main = "Accuracy for Full Random Forest Model")
+```
+
+```{r}
+# Sensitivity and specificity plot for random forest model including secondary variables
+plot(cutoffs, full_forest_list["Sensitivity", ], col = "darkorange", pch = 20, type = "b", lty = 2,
+     ylab = "Performance", main = "Sensitvity and Specificity for Full Random Forest Model")
+points(cutoffs, full_forest_list["Specificity", ], col = "midnightblue", pch = 20, type = "b", lty = 2)
+legend("bottomleft", c("Sensitivity", "Specificity"), col = c("darkorange", "midnightblue"), pch = 20)
+```
+
+```{r}
+# Accuracy plot for logit model including secondary variables
+plot(cutoffs, full_logit_list["Accuracy", ], col = "chartreuse", pch = 20, type = "b", lty = 2, lwd = 2,
+     ylab = "Accuracy", main = "Accuracy for Full Logit Model")
+```
+
+```{r}
+# Sensitivity and specificity plot for logit model including secondary variables
+plot(cutoffs, full_logit_list["Sensitivity", ], col = "purple", pch = 20, type = "b", lty = 2,
+     ylab = "Performance", main = "Sensitvity and Specificity for Full Logit Model")
+points(cutoffs, full_logit_list["Specificity", ], col = "firebrick", pch = 20, type = "b", lty = 2)
+legend("bottomleft", c("Sensitivity", "Specificity"), col = c("purple", "firebrick"), pch = 20)
+```
+
+## Discussion
+
+Discuss your results here.
+
+***
+
+## Appendix
+
+Place potential additional information here.
+
+```{r}
+
+```
+
+
+KEEP AN EMPTY LINE AT THE END!
